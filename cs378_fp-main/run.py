@@ -53,7 +53,7 @@ def main():
     if args.dataset.endswith('.json') or args.dataset.endswith('.jsonl'):
         dataset_id = None
         # Load from local json/jsonl file
-        dataset = datasets.load_dataset('json', data_files=args.dataset)
+        dataset = datasets.load_dataset('json', data_files=args.dataset, field="data")
         # By default, the "json" dataset loader places all examples in the train split,
         # so if we want to use a jsonl file for evaluation we need to get the "train" split
         # from the loaded dataset
@@ -66,6 +66,24 @@ def main():
         eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
         # Load the raw data
         dataset = datasets.load_dataset(*dataset_id)
+        
+        
+        '''
+        #Saves data set as json
+
+        f = open("valid_set.json", "w")
+        f.write('{"data": ')
+        f.write("[")
+        for i in range(len(dataset["validation"])):
+            nxt = dataset["validation"][i]
+            f.write(json.dumps(nxt))
+            if (i + 1 < len(dataset["validation"])):
+                f.write(",")
+        f.write("]")
+        f.write(" }")
+        f.close()
+
+        exit(0)'''
     
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
     task_kwargs = {'num_labels': 3} if args.task == 'nli' else {}
