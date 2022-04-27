@@ -1,8 +1,11 @@
 import json
 import random
  
+
+arg = sys.argv[1]
+ 
 # Opening JSON file
-f = open('../squad_data/example_set.json')
+f = open(arg)
  
 # returns JSON object as
 # a dictionary

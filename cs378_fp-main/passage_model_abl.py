@@ -1,22 +1,27 @@
 import json
 import random
+import sys
+
+arg = sys.argv[1]
  
 # Opening JSON file
-f = open('../squad_data/example_set.json')
+f = open(arg)
  
 # returns JSON object as
 # a dictionary
 data = json.load(f)
 total = 0
 word_counter = dict()
+count = 0
 for i in data['data']:
+    print(count, len(data['data']))
+    count+=1
     p = (i['context'])
     for w in p.split():
         if w not in word_counter:
             word_counter[w]=0
         word_counter[w]+=1
         total+=1
-print(word_counter)
 
 def get_random():
     r = random.randrange(total)
@@ -42,7 +47,6 @@ for i in data['data']:
             ans_map[ans_st[j]] = list()
         ans_map[ans_st[j]].append(ans_txt[j])
         ans_map[ans_st[j]].sort(reverse=True)
-    print(ans_map)
     
     randoms = dict()
     for k in ans_map:
@@ -70,7 +74,6 @@ for i in data['data']:
     i["context"] = res
     ans["answer_start"] = new_ans_st
     ans["text"] = new_ans_text
-print(data)
 
 with open('test.json', 'w') as g:
     json.dump(data, g)
