@@ -22,6 +22,6 @@ for i in data['data']:
 json_string = json.dumps(data)
 print("done")
 
-#with open('test.json', 'w') as g:
-#    json.dump(data, g)
+with open('test.json', 'w') as g:
+    json.dump(data, g)
 f.close()
