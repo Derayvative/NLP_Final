@@ -66,24 +66,6 @@ def main():
         eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
         # Load the raw data
         dataset = datasets.load_dataset(*dataset_id)
-        
-        
-        '''
-        #Saves data set as json
-
-        f = open("valid_set.json", "w")
-        f.write('{"data": ')
-        f.write("[")
-        for i in range(len(dataset["validation"])):
-            nxt = dataset["validation"][i]
-            f.write(json.dumps(nxt))
-            if (i + 1 < len(dataset["validation"])):
-                f.write(",")
-        f.write("]")
-        f.write(" }")
-        f.close()
-
-        exit(0)'''
     
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
     task_kwargs = {'num_labels': 3} if args.task == 'nli' else {}
