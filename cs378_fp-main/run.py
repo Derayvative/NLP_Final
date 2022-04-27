@@ -5,6 +5,7 @@ from helpers import prepare_dataset_nli, prepare_train_dataset_qa, \
     prepare_validation_dataset_qa, QuestionAnsweringTrainer, compute_accuracy
 import os
 import json
+import torch
 
 NUM_PREPROCESSING_WORKERS = 2
 
@@ -75,7 +76,8 @@ def main():
                      'nli': AutoModelForSequenceClassification}
     model_class = model_classes[args.task]
     # Initialize the model and tokenizer from the specified pretrained model/checkpoint
-    model = model_class.from_pretrained(args.model, **task_kwargs)
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    model = model_class.from_pretrained(args.model, **task_kwargs).to(device)
     tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
 
     # Select the dataset preprocessing function (these functions are defined in helpers.py)
