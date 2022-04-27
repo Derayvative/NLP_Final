@@ -14,8 +14,6 @@ total = 0
 word_counter = dict()
 count = 0
 for i in data['data']:
-    print(count, len(data['data']))
-    count+=1
     p = (i['context'])
     for w in p.split():
         if w not in word_counter:
@@ -23,17 +21,18 @@ for i in data['data']:
         word_counter[w]+=1
         total+=1
 
-def get_random():
-    r = random.randrange(total)
-    for key in word_counter:
-        r = r - word_counter[key]
-        if (r < 0):
-            return key
-    return "NAN"
+keys = list(word_counter.keys())
+vals = list(word_counter.values())
+
+def get_random(l):
+    randomList = random.choices(keys, weights=vals, k=l)
+    return randomList
 
 
 #Assigns gibberish using unigram model
 for i in data['data']:
+    count+=1
+    print(count, len(data['data']))
     p = i['context']
     txt = (p.split())
 
@@ -56,13 +55,15 @@ for i in data['data']:
     res = ""
     new_ans_st = list()
     new_ans_text = list()
+    rl = get_random(len(txt))
     for idx in range(len(txt)):
-        temp = (get_random())
+        temp = rl[idx]
         added=False
-
+        
         for k in ans_map:
             st = len(res)
             if (idx == randoms[k]):
+                print(ans_map[k])
                 for w in ans_map[k]:
                     new_ans_st.append(st)
                     new_ans_text.append(w)
@@ -71,6 +72,7 @@ for i in data['data']:
 
         if (not added):
             res+=(temp) + " "
+
     i["context"] = res
     ans["answer_start"] = new_ans_st
     ans["text"] = new_ans_text

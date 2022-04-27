@@ -1,6 +1,6 @@
 import json
 import random
- 
+import sys
 
 arg = sys.argv[1]
  
@@ -19,6 +19,9 @@ for i in data['data']:
 for i in data['data']:
     i['question'] = random.choice(questions)
 
-with open('test.json', 'w') as g:
-    json.dump(data, g)
+json_string = json.dumps(data)
+print("done")
+
+#with open('test.json', 'w') as g:
+#    json.dump(data, g)
 f.close()
