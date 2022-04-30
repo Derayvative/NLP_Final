@@ -76,8 +76,7 @@ def main():
                      'nli': AutoModelForSequenceClassification}
     model_class = model_classes[args.task]
     # Initialize the model and tokenizer from the specified pretrained model/checkpoint
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    model = model_class.from_pretrained(args.model, **task_kwargs).to(device)
+    model = model_class.from_pretrained(args.model, **task_kwargs)
     tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
 
     # Select the dataset preprocessing function (these functions are defined in helpers.py)
