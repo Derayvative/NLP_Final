@@ -11,7 +11,7 @@ def get_answer_recalc(answers, context):
         answer_start = [context.index(a["text"]) for a in answers]
     except ValueError:
         print(context)
-        raise Exception("a")
+        raise Exception("Unable to find original Answer")
 
     return {"text": text, "answer_start": answer_start}
 
@@ -37,4 +37,4 @@ def create_control_set(data):
 # reformat_json(data,"../squad_data/reformat-conrast-set-control.json")
 
 data = json.load(open("../squad_data/contrast-set-v1.0.json"))
-reformat_json(data,"../squad_data/reformat-conrast-set-v1.0.json", True)
+reformat_json(data,"../squad_data/reformat-contrast-set-v1.0.json", True)
