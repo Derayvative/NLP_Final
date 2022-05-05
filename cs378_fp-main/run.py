@@ -6,6 +6,7 @@ from helpers import prepare_dataset_nli, prepare_train_dataset_qa, \
 import os
 import json
 import torch
+from torch.nn import functional as F
 
 NUM_PREPROCESSING_WORKERS = 2
 
@@ -16,7 +17,7 @@ class EnsembleBasedTrainer(QuestionAnsweringTrainer):
         self.biased_model = biased_model
     
     # loss defined here: https://arxiv.org/pdf/2012.01300.pdf
-    def ensemble_loss(self, w, m):
+    def ensemble_logits(self, w, m):
         return -m - w + torch.log(1 + torch.exp(m+w))
 
     # Overrides loss function
@@ -28,19 +29,20 @@ class EnsembleBasedTrainer(QuestionAnsweringTrainer):
         
         biased_outputs = self.biased_model(**inputs)
         outputs = model(**inputs)
+
+        # Get the Product of Experts based logits
+        ensemble_start_logits = self.ensemble_logits(biased_outputs.start_logits, outputs.start_logits)
+        ensemble_end_logits = self.ensemble_logits(biased_outputs.end_logits, outputs.end_logits)
+        
         # Save past state if it exists
         if self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
 
-        if labels is not None:
-            loss_w = self.label_smoother(biased_outputs, labels)
-            loss_m = self.label_smoother(outputs, labels)
-        else:
-            # We don't use .loss here since the model may return tuples instead of ModelOutput.
-            loss_w = biased_outputs["loss"] if isinstance(biased_outputs, dict) else biased_outputs[0]
-            loss_m = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+        # Calculate the loss using standard cross_entropy on the ensemble based logits
+        start_loss = F.cross_entropy(ensemble_start_logits, inputs.start_positions)
+        end_loss = F.cross_entropy(ensemble_end_logits, inputs.end_positions)
 
-        loss = self.ensemble_loss(loss_w, loss_m)
+        loss = start_loss + end_loss
 
         return (loss, outputs) if return_outputs else loss
 
@@ -82,6 +84,10 @@ def main():
                       help='Limit the number of examples to train on.')
     argp.add_argument('--max_eval_samples', type=int, default=None,
                       help='Limit the number of examples to evaluate on.')
+    argp.add_argument('--do_biased_train', action="store_true", default=False, help="Flag to set training of the biased (BERT-tiny) model")
+    argp.add_argument('--biased_model', type=str, default="google/bert_uncased_L-2_H-128_A-2", help="""This argument specifies the biased model to fine-tune.
+        This should either be a HuggingFace model ID (see https://huggingface.co/models)
+        or a path to a saved model checkpoint (a folder containing config.json and pytorch_model.bin).""")
 
     training_args, args = argp.parse_args_into_dataclasses()
 
@@ -114,9 +120,13 @@ def main():
 
     # Initialize the model and tokenizer from the specified pretrained model/checkpoint
     # BERT-TINY
-    biased_model = model_class.from_pretrained("google/bert_uncased_L-2_H-128_A-2", **task_kwargs)
-    model = model_class.from_pretrained(args.model, **task_kwargs)
-    tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
+    biased_model = model_class.from_pretrained(args.biased_model, **task_kwargs)
+
+    if args.do_biased_train:
+        tokenizer = AutoTokenizer.from_pretrained(args.biased_model, use_fast=True)
+    else:
+        model = model_class.from_pretrained(args.model, **task_kwargs)
+        tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
 
     # Select the dataset preprocessing function (these functions are defined in helpers.py)
     if args.task == 'qa':
@@ -168,7 +178,11 @@ def main():
     if args.task == 'qa':
         # For QA, we need to use a tweaked version of the Trainer (defined in helpers.py)
         # to enable the question-answering specific evaluation metrics
-        trainer_class = EnsembleBasedTrainer
+        if args.do_biased_train:
+            trainer_class = QuestionAnsweringTrainer
+        else:
+            trainer_class = EnsembleBasedTrainer
+
         eval_kwargs['eval_examples'] = eval_dataset
         metric = datasets.load_metric('squad')
         compute_metrics = lambda eval_preds: metric.compute(
@@ -186,24 +200,25 @@ def main():
         return compute_metrics(eval_preds)
 
     # Initialize the Trainer object with the specified arguments and the model and dataset we loaded above
-    trainer = trainer_class(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset_featurized,
-        eval_dataset=eval_dataset_featurized,
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics_and_store_predictions,
-        biased_model=biased_model
-    )
-
-    biased_trainer = QuestionAnsweringTrainer(
-        model=biased_model,
-        args=training_args,
-        train_dataset=train_dataset_featurized,
-        eval_dataset=eval_dataset_featurized,
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics_and_store_predictions
-    )
+    if args.do_biased_train:
+        trainer = QuestionAnsweringTrainer(
+            model=biased_model,
+            args=training_args,
+            train_dataset=train_dataset_featurized,
+            eval_dataset=eval_dataset_featurized,
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics_and_store_predictions
+        )
+    else:
+        trainer = trainer_class(
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset_featurized,
+            eval_dataset=eval_dataset_featurized,
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics_and_store_predictions,
+            biased_model=biased_model
+        )
 
     # Train and/or evaluate
     if training_args.do_train:
