@@ -9,6 +9,41 @@ import torch
 
 NUM_PREPROCESSING_WORKERS = 2
 
+class EnsembleBasedTrainer(QuestionAnsweringTrainer):
+    def __init__(self, *args, eval_examples=None, biased_model=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.eval_examples = eval_examples
+        self.biased_model = biased_model
+    
+    # loss defined here: https://arxiv.org/pdf/2012.01300.pdf
+    def ensemble_loss(self, w, m):
+        return -m - w + torch.log(1 + torch.exp(m+w))
+
+    # Overrides loss function
+    def compute_loss(self, model, inputs, return_outputs=False):
+        if self.label_smoother is not None and "labels" in inputs:
+            labels = inputs.pop("labels")
+        else:
+            labels = None
+        
+        biased_outputs = self.biased_model(**inputs)
+        outputs = model(**inputs)
+        # Save past state if it exists
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None:
+            loss_w = self.label_smoother(biased_outputs, labels)
+            loss_m = self.label_smoother(outputs, labels)
+        else:
+            # We don't use .loss here since the model may return tuples instead of ModelOutput.
+            loss_w = biased_outputs["loss"] if isinstance(biased_outputs, dict) else biased_outputs[0]
+            loss_m = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+        loss = self.ensemble_loss(loss_w, loss_m)
+
+        return (loss, outputs) if return_outputs else loss
+
 
 def main():
     argp = HfArgumentParser(TrainingArguments)
@@ -75,7 +110,11 @@ def main():
     model_classes = {'qa': AutoModelForQuestionAnswering,
                      'nli': AutoModelForSequenceClassification}
     model_class = model_classes[args.task]
+
+
     # Initialize the model and tokenizer from the specified pretrained model/checkpoint
+    # BERT-TINY
+    biased_model = model_class.from_pretrained("google/bert_uncased_L-2_H-128_A-2", **task_kwargs)
     model = model_class.from_pretrained(args.model, **task_kwargs)
     tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
 
@@ -129,7 +168,7 @@ def main():
     if args.task == 'qa':
         # For QA, we need to use a tweaked version of the Trainer (defined in helpers.py)
         # to enable the question-answering specific evaluation metrics
-        trainer_class = QuestionAnsweringTrainer
+        trainer_class = EnsembleBasedTrainer
         eval_kwargs['eval_examples'] = eval_dataset
         metric = datasets.load_metric('squad')
         compute_metrics = lambda eval_preds: metric.compute(
@@ -153,8 +192,19 @@ def main():
         train_dataset=train_dataset_featurized,
         eval_dataset=eval_dataset_featurized,
         tokenizer=tokenizer,
+        compute_metrics=compute_metrics_and_store_predictions,
+        biased_model=biased_model
+    )
+
+    biased_trainer = QuestionAnsweringTrainer(
+        model=biased_model,
+        args=training_args,
+        train_dataset=train_dataset_featurized,
+        eval_dataset=eval_dataset_featurized,
+        tokenizer=tokenizer,
         compute_metrics=compute_metrics_and_store_predictions
     )
+
     # Train and/or evaluate
     if training_args.do_train:
         trainer.train()
